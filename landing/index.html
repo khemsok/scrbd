@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>scrbd — YouTube Transcripts from Your Terminal</title>
+<meta name="description" content="A lightweight CLI tool to extract YouTube video transcripts. No API key needed. Search, clip, and export in 5 formats.">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,700;0,9..144,900;1,9..144,300;1,9..144,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  --bg: #F5EDE4;
+  --bg-alt: #EDE3D8;
+  --surface: #FAF5EF;
+  --surface-border: #C8B8A4;
+  --text: #2C2420;
+  --text-mid: #5A4A3C;
+  --text-muted: #8B7B6B;
+  --accent: #B5451E;
+  --accent-bright: #D05828;
+  --accent-muted: #9A6B50;
+  --clay: #C07A50;
+  --sienna: #A0522D;
+  --sand: #D4C4AD;
+  --heading: 'Fraunces', serif;
+  --body: 'DM Sans', sans-serif;
+  --mono: 'Space Mono', monospace;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--body);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a { color: inherit; }
+
+/* Grain overlay */
+.page-decor {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  opacity: 0.3;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  background-size: 200px;
+}
+
+/* ── NAV ── */
+.nav {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  z-index: 10;
+}
+.nav-logo {
+  font-family: var(--heading);
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: var(--text);
+  text-decoration: none;
+  letter-spacing: -0.03em;
+}
+.nav-logo span { color: var(--accent); }
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  list-style: none;
+}
+.nav-links a {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+.nav-links a:hover { color: var(--accent); }
+.nav-links .nav-cta {
+  background: var(--text);
+  color: var(--bg);
+  padding: 8px 18px;
+  border: 2px solid var(--text);
+  transition: all 0.2s ease;
+}
+.nav-links .nav-cta:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+/* ── HERO ── */
+.hero {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 60px 40px 56px;
+  position: relative;
+  z-index: 1;
+  border-bottom: 3px solid var(--text);
+}
+.hero-eyebrow {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--sand);
+}
+.logo {
+  font-family: var(--heading);
+  font-size: clamp(5rem, 14vw, 10rem);
+  font-weight: 900;
+  line-height: 0.85;
+  color: var(--text);
+  letter-spacing: -0.04em;
+  margin-bottom: 24px;
+}
+.logo .accent-dot { color: var(--accent); }
+.tagline {
+  font-family: var(--mono);
+  font-size: clamp(0.85rem, 1.5vw, 1rem);
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 36px;
+  max-width: 500px;
+}
+.install-cmd {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--text);
+  color: var(--bg);
+  padding: 14px 24px;
+  border: 3px solid var(--text);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
+}
+.install-cmd:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.install-cmd .prompt { color: var(--clay); font-weight: 700; }
+.install-cmd .copy-hint {
+  font-size: 0.6rem; opacity: 0.5;
+}
+
+/* ── STATS BAR ── */
+.stats-bar {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 20px 40px;
+  display: flex;
+  gap: 40px;
+  border-bottom: 1px solid var(--sand);
+  position: relative;
+  z-index: 1;
+}
+.stat {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.stat-value {
+  font-family: var(--heading);
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: var(--text);
+}
+.stat-label {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+}
+
+/* ── FEATURES ── */
+.features-section { position: relative; z-index: 1; }
+.features-header {
+  max-width: 960px; margin: 0 auto;
+  padding: 48px 40px 16px;
+  display: flex; align-items: baseline; gap: 16px;
+}
+.features-header h2 {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.features-header .line {
+  flex: 1; height: 2px; background: var(--sand);
+}
+.features-header .count {
+  font-family: var(--mono); font-size: 0.7rem; color: var(--text-muted);
+}
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 40px 0;
+}
+.feature-card {
+  padding: 28px 24px;
+  border: 2px solid var(--surface-border);
+  margin: -1px;
+  transition: all 0.2s ease;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0 16px;
+  align-items: start;
+}
+.feature-card:hover {
+  background: var(--surface);
+  border-color: var(--accent-muted);
+  z-index: 1;
+}
+.feature-icon {
+  font-size: 1.3rem;
+  grid-row: 1 / 3;
+  padding-top: 4px;
+}
+.feature-num {
+  font-family: var(--mono); font-size: 0.6rem;
+  color: var(--text-muted); letter-spacing: 0.1em;
+  margin-bottom: 2px;
+}
+.feature-title {
+  font-family: var(--heading);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.feature-desc {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  grid-column: 2;
+}
+
+/* ── HOW IT WORKS ── */
+.how-section {
+  max-width: 960px; margin: 0 auto;
+  padding: 56px 40px 0;
+  border-top: 3px solid var(--text);
+  position: relative;
+  z-index: 1;
+}
+.how-header {
+  display: flex; align-items: baseline; gap: 16px;
+  margin-bottom: 32px;
+}
+.how-header h2 {
+  font-family: var(--heading);
+  font-size: 1.8rem;
+  font-weight: 900;
+  color: var(--text);
+}
+.how-header p {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.how-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+}
+.how-step {
+  padding: 28px 24px;
+  border: 2px solid var(--surface-border);
+  margin: -1px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.how-step-num {
+  font-family: var(--heading);
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: var(--sand);
+  line-height: 1;
+  margin-bottom: 14px;
+}
+.how-step h3 {
+  font-family: var(--heading);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.how-step p {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  flex: 1;
+}
+.how-step code {
+  display: block;
+  margin-top: 14px;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  background: var(--text);
+  color: var(--clay);
+  padding: 10px 14px;
+  line-height: 1.4;
+  word-break: break-all;
+  white-space: normal;
+}
+
+/* ── CODE EXAMPLES ── */
+.code-section {
+  max-width: 960px; margin: 0 auto; padding: 56px 40px 56px;
+  display: block;
+  border-top: 3px solid var(--text);
+  position: relative; z-index: 1;
+}
+.code-section .section-label {
+  margin-bottom: 24px;
+  display: flex; align-items: baseline; gap: 16px;
+}
+.code-section .section-label h2 {
+  font-family: var(--heading);
+  font-size: 1.8rem;
+  font-weight: 900;
+  color: var(--text);
+}
+.code-section .section-label p {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.code-blocks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.code-blocks .code-block:last-child {
+  grid-column: 1 / -1;
+}
+.code-block {
+  background: #221C18;
+  padding: 24px;
+  border: 2px solid #3A302A;
+  overflow-x: auto;
+  position: relative;
+}
+.code-block .code-label {
+  position: absolute; top: 8px; right: 12px;
+  font-family: var(--mono);
+  font-size: 0.6rem; color: #5A4A3C; letter-spacing: 0.1em; text-transform: uppercase;
+}
+.code-block pre {
+  font-family: var(--mono); font-size: 0.78rem; line-height: 1.8; color: #D4C4AD;
+}
+.code-block .cm { color: #5A4A3C; }
+.code-block .cmd { color: #D4A030; }
+.code-block .flag { color: #D05828; }
+.code-block .str { color: #C07A50; }
+.code-block .out { color: #6B5B48; }
+
+/* ── FORMATS SHOWCASE ── */
+.formats-section {
+  max-width: 960px; margin: 0 auto;
+  padding: 0 40px 56px;
+  position: relative; z-index: 1;
+}
+.formats-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0;
+}
+.format-card {
+  border: 2px solid var(--surface-border);
+  margin: -1px;
+  padding: 20px 16px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+.format-card:hover {
+  background: var(--surface);
+  border-color: var(--accent-muted);
+  z-index: 1;
+}
+.format-flag {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.format-name {
+  font-family: var(--body);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* ── CTA ── */
+.cta {
+  max-width: 960px; margin: 0 auto;
+  padding: 48px 40px;
+  border-top: 3px solid var(--text);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative; z-index: 1;
+}
+.cta h2 {
+  font-family: var(--heading);
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 900;
+  line-height: 1;
+}
+.cta p {
+  color: var(--text-muted); margin-top: 8px; font-size: 0.9rem;
+  font-family: var(--mono);
+}
+.cta-btn {
+  display: inline-block;
+  padding: 16px 40px;
+  background: var(--accent);
+  color: white;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  text-decoration: none;
+  border: 3px solid var(--accent);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+.cta-btn:hover {
+  background: transparent;
+  color: var(--accent);
+}
+
+/* ── FOOTER ── */
+.footer {
+  border-top: 2px solid var(--surface-border);
+  position: relative;
+  z-index: 1;
+}
+.footer-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 40px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.footer .footer-logo {
+  font-family: var(--heading);
+  font-size: 0.95rem;
+  font-weight: 900;
+  color: var(--text);
+}
+.footer .footer-logo span { color: var(--accent); }
+.footer-sep { opacity: 0.3; }
+.footer a {
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+.footer a:hover { color: var(--accent); }
+
+/* ── ANIMATIONS ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.hero-content { animation: fadeUp 0.8s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.feature-card { animation: fadeUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.feature-card:nth-child(1) { animation-delay: 0.05s; }
+.feature-card:nth-child(2) { animation-delay: 0.1s; }
+.feature-card:nth-child(3) { animation-delay: 0.15s; }
+.feature-card:nth-child(4) { animation-delay: 0.2s; }
+.feature-card:nth-child(5) { animation-delay: 0.25s; }
+.feature-card:nth-child(6) { animation-delay: 0.3s; }
+.code-block { animation: fadeUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: 0.1s; }
+.how-step { animation: fadeUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.how-step:nth-child(1) { animation-delay: 0.05s; }
+.how-step:nth-child(2) { animation-delay: 0.12s; }
+.how-step:nth-child(3) { animation-delay: 0.19s; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 860px) {
+  .nav { padding: 20px 24px; }
+  .nav-links { gap: 20px; }
+  .hero { padding: 40px 24px 48px; }
+  .stats-bar { padding: 16px 24px; gap: 24px; flex-wrap: wrap; }
+  .features-header { padding: 40px 24px 16px; }
+  .features { grid-template-columns: 1fr; padding: 0 24px; }
+  .how-section { padding: 48px 24px 0; }
+  .how-steps { grid-template-columns: 1fr; }
+  .code-section { padding: 48px 24px; }
+  .code-blocks { grid-template-columns: 1fr; }
+  .code-blocks .code-block:last-child { grid-column: auto; }
+  .formats-section { padding: 0 24px 48px; }
+  .formats-grid { grid-template-columns: repeat(3, 1fr); }
+  .cta {
+    flex-direction: column; text-align: center;
+    gap: 24px; padding: 40px 24px;
+  }
+  .footer-inner { padding: 20px 24px; flex-wrap: wrap; }
+}
+
+@media (max-width: 480px) {
+  .nav-links .nav-hide-mobile { display: none; }
+  .stats-bar { gap: 16px; }
+  .stat-value { font-size: 1.1rem; }
+  .formats-grid { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<div class="page-decor"></div>
+
+<!-- ── NAV ── -->
+<nav class="nav">
+  <a href="#" class="nav-logo">scrbd<span>.</span></a>
+  <ul class="nav-links">
+    <li><a href="#features" class="nav-hide-mobile">Features</a></li>
+    <li><a href="#usage" class="nav-hide-mobile">Usage</a></li>
+    <li><a href="https://github.com/khemsok/scrbd" target="_blank">GitHub</a></li>
+    <li><a href="https://www.npmjs.com/package/@khemsok/scrbd" target="_blank" class="nav-cta">npm</a></li>
+  </ul>
+</nav>
+
+<!-- ── HERO ── -->
+<section class="hero">
+  <div class="hero-content">
+    <span class="hero-eyebrow">CLI Tool &middot; Open Source &middot; MIT</span>
+    <h1 class="logo">scrbd<span class="accent-dot">.</span></h1>
+    <p class="tagline">YouTube transcripts from your terminal. No API key, no setup, no dependencies.</p>
+    <button class="install-cmd" onclick="copyInstall()" title="Click to copy">
+      <span><span class="prompt">$</span> npx @khemsok/scrbd</span>
+      <span class="copy-hint" id="copyHint">click to copy</span>
+    </button>
+  </div>
+</section>
+
+<!-- ── STATS ── -->
+<div class="stats-bar">
+  <div class="stat">
+    <span class="stat-value">0</span>
+    <span class="stat-label">dependencies</span>
+  </div>
+  <div class="stat">
+    <span class="stat-value">5</span>
+    <span class="stat-label">output formats</span>
+  </div>
+  <div class="stat">
+    <span class="stat-value">1</span>
+    <span class="stat-label">command to start</span>
+  </div>
+  <div class="stat">
+    <span class="stat-value">&infin;</span>
+    <span class="stat-label">transcripts</span>
+  </div>
+</div>
+
+<!-- ── FEATURES ── -->
+<div class="features-section" id="features">
+  <div class="features-header">
+    <h2>Features</h2>
+    <span class="line"></span>
+    <span class="count">06</span>
+  </div>
+  <section class="features">
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F511;</span>
+      <span class="feature-num">01</span>
+      <h3 class="feature-title">No API Key</h3>
+      <p class="feature-desc">Works instantly. No Google API keys, no OAuth, no configuration required.</p>
+    </div>
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F50D;</span>
+      <span class="feature-num">02</span>
+      <h3 class="feature-title">Search & Clip</h3>
+      <p class="feature-desc">Find phrases with context. Extract time ranges for precise segments.</p>
+    </div>
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F30D;</span>
+      <span class="feature-num">03</span>
+      <h3 class="feature-title">Multi-language</h3>
+      <p class="feature-desc">Fetch captions in any available language. All YouTube language codes supported.</p>
+    </div>
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F4C4;</span>
+      <span class="feature-num">04</span>
+      <h3 class="feature-title">5 Output Formats</h3>
+      <p class="feature-desc">Plain text, timestamped, JSON, Markdown, and SRT subtitles.</p>
+    </div>
+    <div class="feature-card">
+      <span class="feature-icon">&#x26A1;</span>
+      <span class="feature-num">05</span>
+      <h3 class="feature-title">Batch Processing</h3>
+      <p class="feature-desc">Process multiple videos at once. Pipe URLs from files or other commands.</p>
+    </div>
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F4E6;</span>
+      <span class="feature-num">06</span>
+      <h3 class="feature-title">Zero Dependencies</h3>
+      <p class="feature-desc">No runtime dependencies. Built with Bun and TypeScript. Lightweight and fast.</p>
+    </div>
+  </section>
+</div>
+
+<!-- ── HOW IT WORKS ── -->
+<section class="how-section">
+  <div class="how-header">
+    <h2>How it works</h2>
+    <p>Three steps. That's it.</p>
+  </div>
+  <div class="how-steps">
+    <div class="how-step">
+      <div class="how-step-num">1</div>
+      <h3>Run the command</h3>
+      <p>Pass a YouTube URL, short link, or just the video ID.</p>
+      <code>$ scrbd dQw4w9WgXcQ</code>
+    </div>
+    <div class="how-step">
+      <div class="how-step-num">2</div>
+      <h3>Pick your format</h3>
+      <p>Add a flag for the output format you need.</p>
+      <code>--json --srt --md --timestamps</code>
+    </div>
+    <div class="how-step">
+      <div class="how-step-num">3</div>
+      <h3>Use the output</h3>
+      <p>Pipe to files, clipboard, jq, or other tools.</p>
+      <code>| pbcopy  > file.srt  | jq</code>
+    </div>
+  </div>
+</section>
+
+<!-- ── CODE EXAMPLES ── -->
+<section class="code-section" id="usage">
+  <div class="section-label">
+    <h2>Usage</h2>
+    <p>Simple commands, powerful output</p>
+  </div>
+  <div class="code-blocks">
+    <div class="code-block">
+      <span class="code-label">Basic</span>
+      <pre><span class="cm"># Get a transcript</span>
+<span class="cmd">scrbd</span> https://youtube.com/watch?v=dQw4w9WgXcQ
+
+<span class="cm"># With timestamps</span>
+<span class="cmd">scrbd</span> dQw4w9WgXcQ <span class="flag">--timestamps</span>
+<span class="out">[0:00] We're no strangers to love
+[0:03] You know the rules and so do I</span></pre>
+    </div>
+    <div class="code-block">
+      <span class="code-label">Search</span>
+      <pre><span class="cm"># Search within a transcript</span>
+<span class="cmd">scrbd</span> search dQw4w9WgXcQ <span class="str">"never gonna"</span>
+<span class="out">Found 3 matches:
+[0:18] Never gonna give you up
+[0:23] Never gonna let you down</span></pre>
+    </div>
+    <div class="code-block">
+      <span class="code-label">Export</span>
+      <pre><span class="cm"># Export as SRT subtitles</span>
+<span class="cmd">scrbd</span> dQw4w9WgXcQ <span class="flag">--srt</span> > subtitles.srt
+
+<span class="cm"># JSON piped to jq</span>
+<span class="cmd">scrbd</span> dQw4w9WgXcQ <span class="flag">--json</span> | jq <span class="str">'.[].text'</span>
+
+<span class="cm"># Clip a time range</span>
+<span class="cmd">scrbd</span> clip dQw4w9WgXcQ <span class="flag">--from</span> 0:30 <span class="flag">--to</span> 1:00
+
+<span class="cm"># Multiple videos at once</span>
+<span class="cmd">scrbd</span> dQw4w9WgXcQ abc123 xyz789
+
+<span class="cm"># Or pipe from a file</span>
+cat urls.txt | <span class="cmd">scrbd</span> <span class="flag">--json</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ── FORMATS ── -->
+<section class="formats-section">
+  <div class="formats-grid">
+    <div class="format-card">
+      <div class="format-flag">(default)</div>
+      <div class="format-name">Plain text</div>
+    </div>
+    <div class="format-card">
+      <div class="format-flag">--timestamps</div>
+      <div class="format-name">Timestamped</div>
+    </div>
+    <div class="format-card">
+      <div class="format-flag">--json</div>
+      <div class="format-name">JSON</div>
+    </div>
+    <div class="format-card">
+      <div class="format-flag">--md</div>
+      <div class="format-name">Markdown</div>
+    </div>
+    <div class="format-card">
+      <div class="format-flag">--srt</div>
+      <div class="format-name">SRT Subtitles</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── CTA ── -->
+<section class="cta">
+  <div>
+    <h2>Start transcribing</h2>
+    <p>One command. Zero setup.</p>
+  </div>
+  <a href="https://www.npmjs.com/package/@khemsok/scrbd" target="_blank" class="cta-btn">
+    View on npm &rarr;
+  </a>
+</section>
+
+<!-- ── FOOTER ── -->
+<footer class="footer">
+  <div class="footer-inner">
+    <span class="footer-logo">scrbd<span>.</span></span>
+    <span class="footer-sep">&middot;</span>
+    <span class="footer-text">MIT License</span>
+    <span class="footer-sep">&middot;</span>
+    <a href="https://github.com/khemsok/scrbd" target="_blank">GitHub</a>
+    <span class="footer-sep">&middot;</span>
+    <a href="https://www.npmjs.com/package/@khemsok/scrbd" target="_blank">npm</a>
+  </div>
+</footer>
+
+<script>
+function copyInstall() {
+  navigator.clipboard.writeText('npx @khemsok/scrbd').then(() => {
+    const hint = document.getElementById('copyHint');
+    hint.textContent = 'copied!';
+    setTimeout(() => { hint.textContent = 'click to copy'; }, 2000);
+  });
+}
+
+// Smooth scroll for anchor links
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    const target = document.querySelector(a.getAttribute('href'));
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+</script>
+</body>
+</html>
