@@ -1,0 +1,22 @@
+{
+  "name": "@khemsok/scrbd",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Get YouTube video transcripts from the command line",
+  "bin": {
+    "scrbd": "./dist/cli.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "build": "bun build src/cli.ts --outdir dist --target bun",
+    "postinstall": "bun run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^25.3.3"
+  }
+}
