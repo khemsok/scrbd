@@ -554,9 +554,9 @@ a { color: inherit; }
   <div class="hero-content">
     <span class="hero-eyebrow">CLI Tool &middot; Open Source &middot; MIT</span>
     <h1 class="logo">scrbd<span class="accent-dot">.</span></h1>
-    <p class="tagline">YouTube transcripts from your terminal. No API key, no setup, no dependencies.</p>
+    <p class="tagline">YouTube transcripts from your terminal. No API key, no setup. Works with npm or bun.</p>
     <button class="install-cmd" onclick="copyInstall()" title="Click to copy">
-      <span><span class="prompt">$</span> npx @khemsok/scrbd</span>
+      <span><span class="prompt">$</span> npm install -g @khemsok/scrbd</span>
       <span class="copy-hint" id="copyHint">click to copy</span>
     </button>
   </div>
@@ -624,7 +624,7 @@ a { color: inherit; }
       <span class="feature-icon">&#x1F4E6;</span>
       <span class="feature-num">06</span>
       <h3 class="feature-title">Zero Dependencies</h3>
-      <p class="feature-desc">No runtime dependencies. Built with Bun and TypeScript. Lightweight and fast.</p>
+      <p class="feature-desc">No runtime dependencies. Works with Node.js 18+ or Bun. Lightweight and fast.</p>
     </div>
   </section>
 </div>
@@ -667,7 +667,7 @@ a { color: inherit; }
     <div class="code-block">
       <span class="code-label">Basic</span>
       <pre><span class="cm"># Get a transcript</span>
-<span class="cmd">scrbd</span> https://youtube.com/watch?v=dQw4w9WgXcQ
+<span class="cmd">scrbd</span> <span class="str">"https://youtube.com/watch?v=dQw4w9WgXcQ"</span>
 
 <span class="cm"># With timestamps</span>
 <span class="cmd">scrbd</span> dQw4w9WgXcQ <span class="flag">--timestamps</span>
@@ -754,7 +754,7 @@ cat urls.txt | <span class="cmd">scrbd</span> <span class="flag">--json</span></
 
 <script>
 function copyInstall() {
-  navigator.clipboard.writeText('npx @khemsok/scrbd').then(() => {
+  navigator.clipboard.writeText('npm install -g @khemsok/scrbd').then(() => {
     const hint = document.getElementById('copyHint');
     hint.textContent = 'copied!';
     setTimeout(() => { hint.textContent = 'click to copy'; }, 2000);

@@ -9,16 +9,16 @@ scrbd https://www.youtube.com/watch?v=dQw4w9WgXcQ
 ## Install
 
 ```bash
-bun add -g @khemsok/scrbd
+npm install -g @khemsok/scrbd
 ```
 
-Or clone and link locally:
+Or clone and run locally:
 
 ```bash
 git clone https://github.com/khemsok/scrbd.git
 cd scrbd
-bun install
-bun link
+npm install
+npm link
 ```
 
 ## Usage
@@ -157,7 +157,7 @@ scrbd clip dQw4w9WgXcQ --from 0:30 --to 1:00 --srt
 
 ## Requirements
 
-- [Bun](https://bun.sh) >= 1.0
+- Node.js >= 18
 
 ## License
 
