@@ -3,7 +3,14 @@
   "version": "0.1.1",
   "type": "module",
   "description": "Get YouTube video transcripts from the command line. No API key needed.",
-  "keywords": ["youtube", "transcript", "captions", "subtitles", "cli", "srt"],
+  "keywords": [
+    "youtube",
+    "transcript",
+    "captions",
+    "subtitles",
+    "cli",
+    "srt"
+  ],
   "author": "khemsok",
   "license": "MIT",
   "repository": {
@@ -18,16 +25,21 @@
   "bin": {
     "scrbd": "./dist/cli.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "bun run src/cli.ts",
     "build": "bun build src/cli.ts --outdir dist --target node",
+    "build:ext": "bun build extension/src/content/content.ts --outfile extension/dist/content.js --target browser && bun build extension/src/background/service-worker.ts --outfile extension/dist/service-worker.js --target browser && bun build extension/src/content/inject.ts --outfile extension/dist/inject.js --target browser",
+    "dev:ext": "bun run build:ext --watch",
     "prepublishOnly": "bun run build"
   },
   "engines": {
     "node": ">=18"
   },
   "devDependencies": {
+    "@types/chrome": "^0.1.37",
     "@types/node": "^25.3.3"
   }
 }

@@ -36,25 +36,25 @@ function resolveVideoId(input: string): string {
   return id;
 }
 
-async function handleTranscript(url: string, options: ReturnType<typeof parseArgs>) {
+async function handleTranscript(url: string, options: ReturnType<typeof parseArgs>): Promise<string> {
   const videoId = resolveVideoId(url);
   const entries = await getTranscript(videoId, options.lang);
-  console.log(formatOutput(entries, options));
+  return formatOutput(entries, options);
 }
 
-async function handleSearch(url: string, query: string, options: ReturnType<typeof parseArgs>) {
+async function handleSearch(url: string, query: string, options: ReturnType<typeof parseArgs>): Promise<string> {
   const videoId = resolveVideoId(url);
   const entries = await getTranscript(videoId, options.lang);
   const results = searchTranscript(entries, query);
 
   if (options.json) {
-    console.log(formatSearchResultsJson(results));
+    return formatSearchResultsJson(results);
   } else {
-    console.log(formatSearchResults(results, query));
+    return formatSearchResults(results, query);
   }
 }
 
-async function handleClip(url: string, options: ReturnType<typeof parseArgs>) {
+async function handleClip(url: string, options: ReturnType<typeof parseArgs>): Promise<string> {
   if (!options.from) {
     throw new Error("--from is required for clip command");
   }
@@ -69,7 +69,18 @@ async function handleClip(url: string, options: ReturnType<typeof parseArgs>) {
     : lastEntry ? lastEntry.start + lastEntry.duration : fromSec;
 
   const clipped = clipTranscript(entries, fromSec, toSec);
-  console.log(formatOutput(clipped, options));
+  return formatOutput(clipped, options);
+}
+
+async function processUrl(url: string, options: ReturnType<typeof parseArgs>): Promise<string> {
+  switch (options.command) {
+    case "search":
+      return handleSearch(url, options.query!, options);
+    case "clip":
+      return handleClip(url, options);
+    default:
+      return handleTranscript(url, options);
+  }
 }
 
 async function main() {
@@ -81,7 +92,6 @@ async function main() {
   }
 
   try {
-    // Collect URLs: from args or stdin
     let urls: string[] = [];
     if (options.urls.length > 0) {
       urls = options.urls;
@@ -100,23 +110,21 @@ async function main() {
       process.exit(1);
     }
 
-    for (const url of urls) {
-      if (urls.length > 1) {
-        console.log(`--- ${url} ---`);
-      }
+    if (urls.length === 1) {
+      console.log(await processUrl(urls[0], options));
+    } else {
+      const results = await Promise.allSettled(urls.map((url) => processUrl(url, options)));
 
-      switch (options.command) {
-        case "search":
-          await handleSearch(url, options.query!, options);
-          break;
-        case "clip":
-          await handleClip(url, options);
-          break;
-        default:
-          await handleTranscript(url, options);
+      for (let i = 0; i < urls.length; i++) {
+        console.log(`--- ${urls[i]} ---`);
+        const result = results[i];
+        if (result.status === "fulfilled") {
+          console.log(result.value);
+        } else {
+          console.error(`Error: ${result.reason instanceof Error ? result.reason.message : result.reason}`);
+        }
+        console.log();
       }
-
-      if (urls.length > 1) console.log();
     }
   } catch (err: unknown) {
     console.error(`Error: ${err instanceof Error ? err.message : err}`);

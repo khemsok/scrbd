@@ -126,7 +126,6 @@ export function parseArgs(argv: string[]): CliOptions {
     }
   }
 
-  // Parse positionals based on subcommand
   if (positionals[0] === "search" || positionals[0] === "clip") {
     options.command = positionals[0] as Command;
     options.urls = positionals[1] ? [positionals[1]] : [];

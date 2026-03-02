@@ -105,16 +105,21 @@ async function fetchCaptionXml(trackUrl: string): Promise<string> {
   return res.text();
 }
 
+const ENTITY_RE = /&(?:amp|lt|gt|quot|apos|#(\d+)|#39);/g;
+const HTML_ENTITIES: Record<string, string> = {
+  "&amp;": "&", "&lt;": "<", "&gt;": ">",
+  "&quot;": '"', "&#39;": "'", "&apos;": "'",
+};
+
+function replaceEntities(text: string): string {
+  return text.replace(ENTITY_RE, (match, code) =>
+    code ? String.fromCharCode(Number(code)) : (HTML_ENTITIES[match] ?? match)
+  );
+}
+
 function decodeHtmlEntities(text: string): string {
-  return text
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
-    .replace(/\n/g, " ");
+  // Two passes to handle double-encoded entities (e.g. &amp;#39; → &#39; → ')
+  return replaceEntities(replaceEntities(text)).replace(/\n/g, " ");
 }
 
 function parseTranscriptXml(xml: string): TranscriptEntry[] {
