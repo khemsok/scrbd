@@ -12,6 +12,22 @@ import {
   formatSrt,
 } from "../core/format";
 import { styles } from "./styles";
+import { loadSettings, saveSettings, hasApiKey, type AiSettings } from "../ai/storage";
+import { streamChat } from "../ai/openrouter";
+import { summaryPrompt, quizPrompt, chatSystemPrompt } from "../ai/prompts";
+import {
+  type AiView,
+  getAiState, setAiView, getCached, setCache,
+  addChatMessage, getChatHistory,
+  setActiveController, abortActiveRequest,
+  resetAiState,
+} from "../ai/state";
+import {
+  buildTabBar, buildSettingsView, buildOnboardingView, buildStreamingView,
+  buildChatView, buildQuizView, buildQuizCards, buildMarkdownHTML,
+  formatChatContent,
+  type QuizQuestion,
+} from "../ai/views";
 
 type Format = "plain" | "timestamps" | "json" | "markdown" | "srt";
 const CODE_FORMATS: Format[] = ["json", "markdown", "srt"];
@@ -20,7 +36,7 @@ const EXT_MAP: Record<Format, string> = {
 };
 
 let currentVideoId: string | null = null;
-let apiKey: string | null = null;
+let ytApiKey: string | null = null;
 let entries: TranscriptEntry[] = [];
 let tracks: CaptionTrack[] = [];
 let currentFormat: Format = "plain";
@@ -35,6 +51,8 @@ let shortsPopoverShadow: ShadowRoot | null = null;
 let themeObserver: MutationObserver | null = null;
 let documentClickHandler: ((e: MouseEvent) => void) | null = null;
 let resizeHandler: (() => void) | null = null;
+let aiSettings: AiSettings = { apiKey: "", model: "google/gemini-3-flash-preview" };
+let pendingAiView: AiView = null;
 
 const ICONS = {
   chevron: `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 8 10 12 14 8"/></svg>`,
@@ -89,6 +107,7 @@ function getVideoId(): string | null {
 }
 
 function buildPanelHTML(): string {
+  const aiEnabled = hasApiKey(aiSettings);
   return `
     <div class="scrbd-panel">
       <div class="scrbd-header">
@@ -96,11 +115,20 @@ function buildPanelHTML(): string {
           <div class="scrbd-logo"><span>s</span>crbd</div>
           <div class="scrbd-badge">transcript</div>
         </div>
-        ${ICONS.chevron.replace('<svg ', '<svg class="scrbd-chevron" ')}
+        <div style="display:flex;align-items:center;gap:4px;">
+          <div class="scrbd-gear-wrap">
+            <button class="scrbd-gear" id="scrbd-gear">⚙</button>
+            <div class="scrbd-gear-dot${aiEnabled ? "" : " visible"}" id="scrbd-gear-dot"></div>
+          </div>
+          ${ICONS.chevron.replace('<svg ', '<svg class="scrbd-chevron" ')}
+        </div>
       </div>
       <div class="scrbd-body">
         <div class="scrbd-body-inner">
-          <div class="scrbd-controls">
+          <div id="scrbd-tab-bar-container">
+            ${buildTabBar("transcript", aiEnabled)}
+          </div>
+          <div class="scrbd-controls" id="scrbd-controls">
             <select class="scrbd-select" id="scrbd-format">
               <option value="plain">Plain</option>
               <option value="timestamps">Timestamps</option>
@@ -113,7 +141,7 @@ function buildPanelHTML(): string {
             <button class="scrbd-btn" id="scrbd-copy">${ICONS.copy} Copy</button>
             <button class="scrbd-btn" id="scrbd-download">${ICONS.download} Save</button>
           </div>
-          <div class="scrbd-search-wrap">
+          <div class="scrbd-search-wrap" id="scrbd-search-wrap">
             ${ICONS.search.replace('<svg ', '<svg class="scrbd-search-icon" ')}
             <input class="scrbd-search" id="scrbd-search" type="text" placeholder="Search transcript..." autocomplete="off" />
             <span class="scrbd-search-count" id="scrbd-search-count"></span>
@@ -213,9 +241,26 @@ function getFilteredEntries(): TranscriptEntry[] {
   return entries.filter((e) => e.text.toLowerCase().includes(q));
 }
 
+function getPlainTranscript(): string {
+  return entries.map((e) => `[${formatTimestamp(e.start)}] ${e.text}`).join("\n");
+}
+
 function renderContent() {
+  const { currentView } = getAiState();
+  if (currentView) return;
+
   const contentEl = $("scrbd-content");
   if (!contentEl) return;
+
+  // Show transcript-specific UI
+  const searchWrap = $("scrbd-search-wrap");
+  if (searchWrap) searchWrap.style.display = "";
+  const controlsEl = $("scrbd-controls");
+  if (controlsEl) controlsEl.style.display = "";
+  const footerEl = $q(".scrbd-footer");
+  if (footerEl) footerEl.style.display = "";
+
+  updateActiveTab("transcript");
 
   const filtered = getFilteredEntries();
 
@@ -266,11 +311,51 @@ function populateLanguages() {
     .join("");
 }
 
+function updateActiveTab(tab: string) {
+  shadowRoot?.querySelectorAll(".scrbd-tab").forEach((el) => {
+    el.classList.toggle("active", (el as HTMLElement).dataset.tab === tab);
+  });
+}
+
+function bindTabHandlers() {
+  shadowRoot?.querySelectorAll(".scrbd-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const tabId = (tab as HTMLElement).dataset.tab;
+      settingsOpen = false;
+      if (tabId === "transcript") {
+        abortActiveRequest();
+        setAiView(null);
+        renderContent();
+        return;
+      }
+      const view = tabId as AiView;
+      if (!hasApiKey(aiSettings)) {
+        pendingAiView = view;
+        openOnboarding();
+        return;
+      }
+      if (entries.length === 0) {
+        showToast("Load a transcript first");
+        return;
+      }
+      renderAiView(view);
+    });
+  });
+}
+
+function isolateKeyboard(el: HTMLElement | null) {
+  if (!el) return;
+  el.addEventListener("keydown", (e) => e.stopPropagation());
+  el.addEventListener("keyup", (e) => e.stopPropagation());
+  el.addEventListener("keypress", (e) => e.stopPropagation());
+}
+
 function bindEvents() {
   const isShorts = window.location.pathname.startsWith("/shorts/");
   if (!isShorts) {
     const header = $q(".scrbd-header");
-    header?.addEventListener("click", () => {
+    header?.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest(".scrbd-gear")) return;
       panelExpanded = !panelExpanded;
       const panel = $q(".scrbd-panel");
       panel?.classList.toggle("expanded", panelExpanded);
@@ -289,11 +374,8 @@ function bindEvents() {
     await loadTranscript();
   });
 
-  // Stop key events from reaching YouTube's shortcuts (f=fullscreen, k=pause, etc.)
   const searchInput = $("scrbd-search") as HTMLInputElement | null;
-  searchInput?.addEventListener("keydown", (e) => e.stopPropagation());
-  searchInput?.addEventListener("keyup", (e) => e.stopPropagation());
-  searchInput?.addEventListener("keypress", (e) => e.stopPropagation());
+  isolateKeyboard(searchInput);
   let searchTimeout: ReturnType<typeof setTimeout>;
   searchInput?.addEventListener("input", () => {
     clearTimeout(searchTimeout);
@@ -329,6 +411,27 @@ function bindEvents() {
     URL.revokeObjectURL(url);
     showToast("Downloaded!");
   });
+
+  // Tab handlers
+  bindTabHandlers();
+
+  // Gear button — expand panel first if collapsed
+  const gearBtn = $("scrbd-gear");
+  gearBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!panelExpanded && !isShorts) {
+      panelExpanded = true;
+      const panel = $q(".scrbd-panel");
+      panel?.classList.add("expanded");
+    }
+    if (!hasApiKey(aiSettings)) {
+      pendingAiView = null;
+      openOnboarding();
+    } else {
+      openSettings();
+    }
+  });
+
 }
 
 function bindEntryClicks() {
@@ -363,6 +466,13 @@ function seekVideo(seconds: number) {
   video.play().catch(() => {});
 }
 
+function parseTimestampToSeconds(ts: string): number {
+  const parts = ts.split(":").map(Number);
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return 0;
+}
+
 function showToast(message: string) {
   const toast = $("scrbd-toast");
   if (!toast) return;
@@ -371,6 +481,492 @@ function showToast(message: string) {
   setTimeout(() => toast.classList.remove("visible"), 2000);
 }
 
+// ── Settings ──
+
+let settingsOpen = false;
+
+function openSettings() {
+  if (settingsOpen) return;
+  settingsOpen = true;
+
+  abortActiveRequest();
+
+  const contentEl = $("scrbd-content");
+  if (!contentEl) return;
+
+  // Hide transcript-specific UI
+  const searchWrap = $("scrbd-search-wrap");
+  if (searchWrap) searchWrap.style.display = "none";
+  const controlsEl = $("scrbd-controls");
+  if (controlsEl) controlsEl.style.display = "none";
+  const footerEl = $q(".scrbd-footer");
+  if (footerEl) footerEl.style.display = "none";
+
+  // Deactivate all tabs
+  updateActiveTab("");
+
+  // Render settings into content area
+  contentEl.innerHTML = buildSettingsView(aiSettings.apiKey, aiSettings.model);
+
+  // Bind settings events
+  const closeBtn = $("scrbd-settings-close");
+  closeBtn?.addEventListener("click", closeSettings);
+
+  const saveBtn = $("scrbd-settings-save");
+  saveBtn?.addEventListener("click", handleSaveSettings);
+
+  isolateKeyboard($("scrbd-settings-key"));
+}
+
+function closeSettings() {
+  if (!settingsOpen) return;
+  settingsOpen = false;
+
+  // Restore previous view
+  const currentView = getAiState().currentView;
+  if (currentView) {
+    renderAiView(currentView);
+  } else {
+    renderContent();
+  }
+}
+
+async function handleSaveSettings() {
+  const keyInput = $("scrbd-settings-key") as HTMLInputElement | null;
+  const modelSelect = $("scrbd-settings-model") as HTMLSelectElement | null;
+  const statusEl = $("scrbd-settings-status");
+
+  if (!keyInput || !modelSelect) return;
+
+  const newSettings = {
+    apiKey: keyInput.value.trim(),
+    model: modelSelect.value,
+  };
+
+  try {
+    aiSettings = await saveSettings(newSettings);
+    const enabled = hasApiKey(aiSettings);
+
+    // Update tab bar
+    const activeTab = getAiState().currentView ?? "transcript";
+    const barContainer = $("scrbd-tab-bar-container");
+    if (barContainer) barContainer.innerHTML = buildTabBar(activeTab, enabled);
+    bindTabHandlers();
+
+    // Update gear dot
+    const dot = $("scrbd-gear-dot");
+    dot?.classList.toggle("visible", !enabled);
+
+    if (statusEl) {
+      statusEl.textContent = "Saved!";
+      statusEl.className = "scrbd-settings-status success";
+    }
+    setTimeout(() => {
+      settingsOpen = false;
+      const currentView = getAiState().currentView;
+      if (currentView) {
+        renderAiView(currentView);
+      } else {
+        renderContent();
+      }
+    }, 600);
+  } catch {
+    if (statusEl) {
+      statusEl.textContent = "Failed to save";
+      statusEl.className = "scrbd-settings-status error";
+    }
+  }
+}
+
+// ── Onboarding ──
+
+function openOnboarding() {
+  settingsOpen = true;
+  abortActiveRequest();
+
+  const contentEl = $("scrbd-content");
+  if (!contentEl) return;
+
+  const searchWrap = $("scrbd-search-wrap");
+  if (searchWrap) searchWrap.style.display = "none";
+  const controlsEl = $("scrbd-controls");
+  if (controlsEl) controlsEl.style.display = "none";
+  const footerEl = $q(".scrbd-footer");
+  if (footerEl) footerEl.style.display = "none";
+
+  updateActiveTab("");
+
+  contentEl.innerHTML = buildOnboardingView();
+
+  isolateKeyboard($("scrbd-onboard-key"));
+
+  const saveBtn = $("scrbd-onboard-save");
+  saveBtn?.addEventListener("click", handleOnboardingSave);
+}
+
+async function handleOnboardingSave() {
+  const keyInput = $("scrbd-onboard-key") as HTMLInputElement | null;
+  const statusEl = $("scrbd-onboard-status");
+  if (!keyInput) return;
+
+  const key = keyInput.value.trim();
+  if (!key) {
+    if (statusEl) {
+      statusEl.textContent = "Please enter an API key";
+      statusEl.className = "scrbd-onboard-status error";
+    }
+    return;
+  }
+
+  try {
+    aiSettings = await saveSettings({ ...aiSettings, apiKey: key });
+    const enabled = hasApiKey(aiSettings);
+
+    // Update tab bar
+    const activeTab = getAiState().currentView ?? "transcript";
+    const barContainer = $("scrbd-tab-bar-container");
+    if (barContainer) barContainer.innerHTML = buildTabBar(activeTab, enabled);
+    bindTabHandlers();
+
+    // Update gear dot
+    const dot = $("scrbd-gear-dot");
+    dot?.classList.toggle("visible", !enabled);
+
+    if (statusEl) {
+      statusEl.textContent = "Saved!";
+      statusEl.className = "scrbd-onboard-status success";
+    }
+
+    setTimeout(() => {
+      settingsOpen = false;
+      if (pendingAiView && entries.length > 0) {
+        renderAiView(pendingAiView);
+        pendingAiView = null;
+      } else {
+        pendingAiView = null;
+        renderContent();
+      }
+    }, 600);
+  } catch {
+    if (statusEl) {
+      statusEl.textContent = "Failed to save";
+      statusEl.className = "scrbd-onboard-status error";
+    }
+  }
+}
+
+// ── AI View Rendering ──
+
+function renderAiView(view: AiView) {
+  abortActiveRequest();
+  setAiView(view);
+
+  const contentEl = $("scrbd-content");
+  if (!contentEl) return;
+
+  // Hide transcript-specific UI when in AI view
+  const searchWrap = $("scrbd-search-wrap");
+  if (searchWrap) searchWrap.style.display = "none";
+  const controlsEl = $("scrbd-controls");
+  if (controlsEl) controlsEl.style.display = "none";
+  const footerEl = $q(".scrbd-footer");
+  if (footerEl) footerEl.style.display = "none";
+
+  updateActiveTab(view as string);
+
+  if (view === "chat") {
+    contentEl.innerHTML = buildChatView(getChatHistory());
+    bindChatEvents();
+    scrollChatToBottom();
+    return;
+  }
+
+  if (view === "quiz") {
+    const cached = getCached("quiz");
+    if (cached) {
+      contentEl.innerHTML = buildQuizView();
+      const stream = $("scrbd-ai-stream");
+      if (stream) {
+        try {
+          const questions = JSON.parse(cached) as QuizQuestion[];
+          stream.innerHTML = buildQuizCards(questions);
+          bindQuizEvents();
+        } catch {
+          stream.innerHTML = `<div class="scrbd-ai-summary">${cached}</div>`;
+        }
+      }
+
+      return;
+    }
+    contentEl.innerHTML = buildQuizView();
+    triggerQuizGeneration();
+    return;
+  }
+
+  // summary
+  const cacheKey = view as string;
+  const cached = getCached(cacheKey);
+  contentEl.innerHTML = buildStreamingView();
+  if (cached) {
+    const stream = $("scrbd-ai-stream");
+    if (stream) {
+      stream.innerHTML = buildMarkdownHTML(cached, aiSettings.model);
+    }
+  } else {
+    triggerStreamingGeneration(view);
+  }
+}
+
+
+function triggerStreamingGeneration(view: AiView) {
+  const streamEl = $("scrbd-ai-stream");
+  if (!streamEl) return;
+
+  const transcript = getPlainTranscript();
+  const prompt = summaryPrompt(transcript);
+  const cacheKey = "summary";
+
+  streamEl.innerHTML = `<span class="scrbd-cursor"></span>`;
+  let textBuffer = "";
+
+  const controller = streamChat(
+    aiSettings.apiKey,
+    aiSettings.model,
+    [{ role: "user", content: prompt }],
+    {
+      onToken(token) {
+        textBuffer += token;
+        const cursor = streamEl.querySelector(".scrbd-cursor");
+        if (cursor) cursor.insertAdjacentText("beforebegin", token);
+      },
+      onDone(fullText) {
+        setCache(cacheKey, fullText);
+        setActiveController(null);
+        streamEl.innerHTML = buildMarkdownHTML(fullText, aiSettings.model);
+      },
+      onError(err) {
+        setActiveController(null);
+        streamEl.innerHTML = `<div class="scrbd-error"><div class="scrbd-error-msg">${escapeHtml(err.message)}</div></div>`;
+      },
+    },
+  );
+
+  setActiveController(controller);
+}
+
+function triggerQuizGeneration() {
+  const streamEl = $("scrbd-ai-stream");
+  if (!streamEl) return;
+
+  const transcript = getPlainTranscript();
+  streamEl.innerHTML = `<div class="scrbd-ai-loading"><div class="scrbd-ai-loading-dot"></div><div class="scrbd-ai-loading-dot"></div><div class="scrbd-ai-loading-dot"></div></div>`;
+
+  const controller = streamChat(
+    aiSettings.apiKey,
+    aiSettings.model,
+    [{ role: "user", content: quizPrompt(transcript) }],
+    {
+      onToken() {},
+      onDone(fullText) {
+        setActiveController(null);
+        setCache("quiz", fullText);
+        try {
+          // Extract JSON from response (handle markdown code blocks)
+          let jsonStr = fullText;
+          const match = fullText.match(/```(?:json)?\s*([\s\S]*?)```/);
+          if (match) jsonStr = match[1].trim();
+
+          const questions = JSON.parse(jsonStr) as QuizQuestion[];
+          streamEl.innerHTML = buildQuizCards(questions);
+          bindQuizEvents();
+        } catch {
+          streamEl.innerHTML = `${buildMarkdownHTML(fullText)}`;
+        }
+      },
+      onError(err) {
+        setActiveController(null);
+        streamEl.innerHTML = `<div class="scrbd-error"><div class="scrbd-error-msg">${escapeHtml(err.message)}</div></div>`;
+      },
+    },
+  );
+
+  setActiveController(controller);
+}
+
+function bindQuizEvents() {
+  shadowRoot?.querySelectorAll(".scrbd-quiz-option").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const card = btn.closest(".scrbd-quiz-card") as HTMLElement | null;
+      if (!card || card.classList.contains("answered")) return;
+
+      const quizIndex = parseInt(card.dataset.quizIndex ?? "0");
+      const optionIndex = parseInt((btn as HTMLElement).dataset.optionIndex ?? "0");
+
+      // Get quiz data from cache
+      const cached = getCached("quiz");
+      if (!cached) return;
+
+      let questions: QuizQuestion[];
+      try {
+        let jsonStr = cached;
+        const match = cached.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (match) jsonStr = match[1].trim();
+        questions = JSON.parse(jsonStr);
+      } catch { return; }
+
+      const question = questions[quizIndex];
+      if (!question) return;
+
+      card.classList.add("answered");
+      const isCorrect = optionIndex === question.correct;
+
+      btn.classList.add(isCorrect ? "correct" : "wrong");
+      if (!isCorrect) {
+        const correctBtn = card.querySelectorAll(".scrbd-quiz-option")[question.correct];
+        correctBtn?.classList.add("correct");
+      }
+
+      // Disable other options
+      card.querySelectorAll(".scrbd-quiz-option").forEach((opt) => {
+        if (!opt.classList.contains("correct") && !opt.classList.contains("wrong")) {
+          opt.classList.add("disabled");
+        }
+      });
+
+      // Show explanation
+      const explanationEl = shadowRoot?.getElementById(`scrbd-quiz-explanation-${quizIndex}`);
+      if (explanationEl && question.explanation) {
+        explanationEl.textContent = question.explanation;
+        explanationEl.classList.add("visible");
+      }
+    });
+  });
+
+  // Regenerate quiz button
+  const regenBtn = $("scrbd-quiz-regen");
+  regenBtn?.addEventListener("click", () => {
+    setCache("quiz", "");
+    renderAiView("quiz");
+  });
+}
+
+// ── Chat ──
+
+function bindChatEvents() {
+  const input = $("scrbd-chat-input") as HTMLInputElement | null;
+  const sendBtn = $("scrbd-chat-send");
+
+  isolateKeyboard(input);
+
+  const send = () => {
+    const text = input?.value.trim();
+    if (!text) return;
+    if (input) input.value = "";
+    sendChatMessage(text);
+  };
+
+  input?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); send(); }
+  });
+  sendBtn?.addEventListener("click", send);
+
+  // Suggestion chips
+  shadowRoot?.querySelectorAll(".scrbd-chat-suggestion").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const text = (chip as HTMLElement).dataset.suggestion;
+      if (text) sendChatMessage(text);
+    });
+  });
+
+  // Ref chip clicks (timestamp seeking)
+  bindRefChips();
+}
+
+function bindRefChips() {
+  shadowRoot?.querySelectorAll(".scrbd-ref-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const time = (chip as HTMLElement).dataset.time;
+      if (time) seekVideo(parseTimestampToSeconds(time));
+    });
+  });
+}
+
+function sendChatMessage(text: string) {
+  addChatMessage({ role: "user", content: text });
+
+  const messagesEl = $("scrbd-chat-messages");
+  if (!messagesEl) return;
+
+  messagesEl.classList.remove("empty");
+
+  // Add user bubble
+  messagesEl.insertAdjacentHTML("beforeend", `
+    <div class="scrbd-chat-msg user">
+      <div class="scrbd-chat-bubble">${escapeHtml(text)}</div>
+    </div>
+  `);
+
+  // Add assistant placeholder
+  messagesEl.insertAdjacentHTML("beforeend", `
+    <div class="scrbd-chat-msg assistant" id="scrbd-chat-streaming">
+      <div class="scrbd-chat-bubble"><span class="scrbd-cursor"></span></div>
+    </div>
+  `);
+  scrollChatToBottom();
+
+  const transcript = getPlainTranscript();
+  const messages = [
+    { role: "system", content: chatSystemPrompt(transcript) },
+    ...getChatHistory().map(m => ({ role: m.role, content: m.content })),
+  ];
+
+  const controller = streamChat(
+    aiSettings.apiKey,
+    aiSettings.model,
+    messages,
+    {
+      onToken(token) {
+        const streamingMsg = $("scrbd-chat-streaming");
+        const bubble = streamingMsg?.querySelector(".scrbd-chat-bubble");
+        const cursor = bubble?.querySelector(".scrbd-cursor");
+        if (cursor) cursor.insertAdjacentText("beforebegin", token);
+        scrollChatToBottom();
+      },
+      onDone(fullText) {
+        setActiveController(null);
+        addChatMessage({ role: "assistant", content: fullText });
+        const streamingMsg = $("scrbd-chat-streaming");
+        if (streamingMsg) {
+          streamingMsg.removeAttribute("id");
+          const bubble = streamingMsg.querySelector(".scrbd-chat-bubble");
+          if (bubble) {
+            bubble.innerHTML = formatChatContent(fullText);
+            bindRefChips();
+          }
+        }
+      },
+      onError(err) {
+        setActiveController(null);
+        const streamingMsg = $("scrbd-chat-streaming");
+        if (streamingMsg) {
+          streamingMsg.removeAttribute("id");
+          const bubble = streamingMsg.querySelector(".scrbd-chat-bubble");
+          if (bubble) bubble.innerHTML = `<em style="color:var(--text-muted)">${escapeHtml(err.message)}</em>`;
+        }
+      },
+    },
+  );
+
+  setActiveController(controller);
+}
+
+function scrollChatToBottom() {
+  const el = $("scrbd-chat-messages");
+  if (el) el.scrollTop = el.scrollHeight;
+}
+
+// ── Transcript Loading ──
+
 async function loadTranscript() {
   const contentEl = $("scrbd-content");
   if (!contentEl) return;
@@ -378,12 +974,12 @@ async function loadTranscript() {
   contentEl.innerHTML = buildSkeletonHTML();
 
   try {
-    if (!apiKey) {
-      apiKey = await extractApiKey();
+    if (!ytApiKey) {
+      ytApiKey = await extractApiKey();
     }
 
     if (!currentVideoId) return;
-    const result = await getTranscript(currentVideoId, apiKey, currentLang || undefined);
+    const result = await getTranscript(currentVideoId, ytApiKey, currentLang || undefined);
     entries = result.entries;
     tracks = result.tracks;
 
@@ -397,6 +993,7 @@ async function loadTranscript() {
 
     populateLanguages();
     renderContent();
+
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to load transcript.";
     contentEl.innerHTML = buildErrorHTML(message);
@@ -432,8 +1029,7 @@ function injectWatchPanel() {
   hostEl = document.createElement("div");
   hostEl.id = "scrbd-host";
   hostEl.style.display = "block";
-  hostEl.style.marginTop = "12px";
-  hostEl.style.marginBottom = "16px";
+  hostEl.style.marginBottom = "12px";
   shadowRoot = hostEl.attachShadow({ mode: "open" });
 
   const isDark = document.documentElement.hasAttribute("dark");
@@ -523,6 +1119,9 @@ function injectShortsPanel() {
     .scrbd-body-inner { overflow: auto; }
     .scrbd-transcript { max-height: 35vh; }
     .scrbd-code-view { max-height: 35vh; }
+    .scrbd-ai-content { max-height: 35vh; }
+    .scrbd-chat-messages { max-height: 30vh; }
+    .scrbd-quiz-cards { max-height: 35vh; }
     .scrbd-header {
       padding: 12px 14px;
       border-bottom: 1px solid var(--border);
@@ -627,6 +1226,7 @@ function injectShortsPanel() {
 }
 
 function removePanel() {
+  abortActiveRequest();
   if (themeObserver) { themeObserver.disconnect(); themeObserver = null; }
   if (documentClickHandler) { document.removeEventListener("click", documentClickHandler); documentClickHandler = null; }
   if (resizeHandler) { window.removeEventListener("resize", resizeHandler); resizeHandler = null; }
@@ -650,6 +1250,9 @@ async function init() {
   searchQuery = "";
   currentLang = "";
   currentFormat = "plain";
+  resetAiState();
+
+  aiSettings = await loadSettings();
 
   const isShortsPage = window.location.pathname.startsWith("/shorts/");
   if (isShortsPage) {

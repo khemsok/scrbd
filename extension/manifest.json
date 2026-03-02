@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "scrbd - YouTube Transcripts",
-  "version": "0.1.0",
-  "description": "Extract YouTube video transcripts instantly. Search, copy, and download in 5 formats. No API key needed.",
-  "permissions": ["activeTab"],
-  "host_permissions": ["https://www.youtube.com/*"],
+  "name": "scrbd - YouTube Transcripts + AI",
+  "version": "0.2.0",
+  "description": "YouTube transcripts with AI-powered summaries, quizzes, and chat. Search, copy, and download in 5 formats.",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["https://www.youtube.com/*", "https://openrouter.ai/*"],
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -26,7 +26,7 @@
       "16": "icons/icon16.png",
       "32": "icons/icon32.png"
     },
-    "default_title": "scrbd - View Transcript"
+    "default_title": "scrbd - Transcripts + AI"
   },
   "web_accessible_resources": [
     {

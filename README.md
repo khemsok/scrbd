@@ -1,27 +1,47 @@
 # scrbd
 
+YouTube transcript extractor + AI. Available as a **CLI tool** and a **Chrome extension**.
+
+## Chrome Extension
+
+Adds a transcript panel to every YouTube video with AI features:
+
+- **Transcript** — searchable, clickable timestamps, export in 5 formats
+- **Summary** — AI-generated summary with key points and topics
+- **Ask AI** — chat with the video transcript, ask questions, get ELI5 explanations
+- **Quiz** — auto-generated quiz to test comprehension
+
+AI features use [OpenRouter](https://openrouter.ai) — bring your own API key.
+
+### Install
+
+1. Clone the repo and build:
+
+```bash
+git clone https://github.com/khemsok/scrbd.git
+cd scrbd
+bun install
+bun run build:ext
+```
+
+2. Open `chrome://extensions`, enable Developer mode
+3. Click "Load unpacked" and select the `extension/` directory
+
+## CLI
+
 Get YouTube video transcripts from the command line. No API key needed.
 
 ```bash
 scrbd https://www.youtube.com/watch?v=dQw4w9WgXcQ
 ```
 
-## Install
+### Install
 
 ```bash
 npm install -g @khemsok/scrbd
 ```
 
-Or clone and run locally:
-
-```bash
-git clone https://github.com/khemsok/scrbd.git
-cd scrbd
-npm install
-npm link
-```
-
-## Usage
+### Usage
 
 ```bash
 # Get a transcript
@@ -53,96 +73,7 @@ scrbd <url> --srt > subtitles.srt
 
 Accepts full YouTube URLs, short URLs (`youtu.be/...`), or just the 11-character video ID.
 
-## Output Formats
-
-### Plain text (default)
-
-```
-Back to the NFL with more burning
-questions as the combine continues. The
-Cardinals general manager is Monti
-```
-
-### Timestamps (`--timestamps`)
-
-```
-[00:00] Back to the NFL with more burning
-[00:01] questions as the combine continues. The
-[00:04] Cardinals general manager is Monti
-```
-
-### JSON (`--json`)
-
-```json
-[
-  { "text": "Back to the NFL with more burning", "start": 0.08, "duration": 4.08 },
-  { "text": "questions as the combine continues.", "start": 1.76, "duration": 4.079 }
-]
-```
-
-### Markdown (`--md`)
-
-```markdown
-## [00:00]
-
-Back to the NFL with more burning questions as the combine continues.
-The Cardinals general manager is Monti Oenfort.
-
-## [00:31]
-
-He says trade talks are open for Kyler Murray and he has not yet
-spoken to the quarterback this off season.
-```
-
-### SRT (`--srt`)
-
-```
-1
-00:00:00,080 --> 00:00:04,160
-Back to the NFL with more burning
-
-2
-00:00:01,760 --> 00:00:05,839
-questions as the combine continues. The
-```
-
-## Commands
-
-### `scrbd search <url> "query"`
-
-Find where something was said. Returns matching segments with surrounding context and timestamps.
-
-```bash
-$ scrbd search dQw4w9WgXcQ "give you up"
-[00:43] Never gonna give you up never gonna let you down
-```
-
-Use `--json` for structured results:
-
-```json
-[
-  {
-    "timestamp": 43.2,
-    "match": "Never gonna give you up",
-    "context": [
-      { "text": "We're no strangers to love", "start": 40.1 },
-      { "text": "Never gonna give you up", "start": 43.2 },
-      { "text": "never gonna let you down", "start": 45.8 }
-    ]
-  }
-]
-```
-
-### `scrbd clip <url> --from <time> --to <time>`
-
-Extract a specific time range from the transcript. Times can be `MM:SS` or `HH:MM:SS`.
-
-```bash
-scrbd clip dQw4w9WgXcQ --from 0:30 --to 1:00
-scrbd clip dQw4w9WgXcQ --from 0:30 --to 1:00 --srt
-```
-
-## Options
+### Options
 
 | Flag | Short | Description |
 |------|-------|-------------|
@@ -155,9 +86,19 @@ scrbd clip dQw4w9WgXcQ --from 0:30 --to 1:00 --srt
 | `--to <time>` | | Clip end time |
 | `--help` | `-h` | Show help |
 
+## Development
+
+```bash
+bun run dev              # Run CLI directly
+bun run build            # Build CLI
+bun run build:ext        # Build Chrome extension
+bun run dev:ext          # Watch mode for extension
+```
+
 ## Requirements
 
 - Node.js >= 18
+- [Bun](https://bun.sh) for building
 
 ## License
 

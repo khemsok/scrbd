@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-scrbd is a zero-dependency YouTube transcript extractor available as both a **CLI tool** (npm package `@khemsok/scrbd`) and a **Chrome extension**. It uses YouTube's undocumented InnerTube API to fetch captions without requiring an API key from the user.
+scrbd is a YouTube transcript extractor with AI features, available as both a **CLI tool** (npm package `@khemsok/scrbd`) and a **Chrome extension**. It uses YouTube's undocumented InnerTube API to fetch captions. The extension adds AI-powered summaries, quizzes, and chat via OpenRouter.
 
 ## Build Commands
 
@@ -46,6 +46,13 @@ Three-script Chrome Extension (Manifest V3):
 
 3. **Service worker** (`background/service-worker.ts`) — Minimal; sends `SCRBD_TOGGLE` message on icon click.
 
+4. **AI modules** (`ai/`) — OpenRouter integration for AI features:
+   - `storage.ts` — `chrome.storage.local` wrapper for API key and model settings
+   - `openrouter.ts` — SSE streaming client with AbortController support
+   - `prompts.ts` — System prompts for summary, quiz, and chat
+   - `views.ts` — HTML builders for AI views (tab bar, summary, chat, quiz, onboarding, settings)
+   - `state.ts` — AI state management (current view, caches, chat history, abort controller)
+
 ### Key Extension Patterns
 
 - **Shadow DOM isolation**: All panel styles live in `content/styles.ts` as a template literal, injected into the shadow root. CSS variables support dark/light themes synced to YouTube's `html[dark]` attribute via MutationObserver.
@@ -53,6 +60,9 @@ Three-script Chrome Extension (Manifest V3):
 - **Format type**: `type Format = "plain" | "timestamps" | "json" | "markdown" | "srt"` with centralized `CODE_FORMATS` and `EXT_MAP` constants.
 - **Event cleanup**: Document-level listeners and MutationObservers are tracked and removed in `removePanel()` to prevent leaks across SPA navigations.
 - **Keyboard isolation**: Search input stops propagation on key events to prevent triggering YouTube shortcuts (f=fullscreen, k=pause, etc.).
+- **AI streaming**: OpenRouter SSE via `fetch` + `ReadableStream`. Tokens streamed into DOM progressively. Results cached in memory per video session, cleared on navigation.
+- **AI view system**: Tab bar switches between transcript, summary, chat, and quiz views. All render into `#scrbd-content`. AI views hide transcript-specific UI (search, controls, footer).
+- **Onboarding flow**: When no API key is configured, clicking an AI tab shows an onboarding view instead of settings. After saving a key, navigates to the originally requested AI tab.
 
 ### InnerTube API Flow
 

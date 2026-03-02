@@ -2,14 +2,17 @@
   "name": "@khemsok/scrbd",
   "version": "0.1.1",
   "type": "module",
-  "description": "Get YouTube video transcripts from the command line. No API key needed.",
+  "description": "YouTube transcript extractor with AI-powered summaries, quizzes, and chat. Available as a CLI and Chrome extension.",
   "keywords": [
     "youtube",
     "transcript",
     "captions",
     "subtitles",
     "cli",
-    "srt"
+    "srt",
+    "ai",
+    "summary",
+    "chrome-extension"
   ],
   "author": "khemsok",
   "license": "MIT",
