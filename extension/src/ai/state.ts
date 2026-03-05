@@ -35,8 +35,13 @@ export function setCache(key: string, value: string) {
   state.cache.set(key, value);
 }
 
+const MAX_CHAT_HISTORY = 50;
+
 export function addChatMessage(msg: ChatMessage) {
   state.chatHistory.push(msg);
+  if (state.chatHistory.length > MAX_CHAT_HISTORY) {
+    state.chatHistory = state.chatHistory.slice(-MAX_CHAT_HISTORY);
+  }
 }
 
 export function getChatHistory(): ChatMessage[] {

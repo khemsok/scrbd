@@ -48,11 +48,11 @@ async function fetchCaptionTracks(
     throw new Error("No caption tracks found. The video may not have subtitles.");
   }
 
-  return tracks.map((track: any) => ({
-    baseUrl: track.baseUrl.replace("&fmt=srv3", ""),
-    languageCode: track.languageCode,
-    name: track.name?.simpleText ?? track.languageCode,
-    kind: track.kind,
+  return tracks.map((track: Record<string, unknown>) => ({
+    baseUrl: (track.baseUrl as string).replace("&fmt=srv3", ""),
+    languageCode: track.languageCode as string,
+    name: ((track.name as Record<string, unknown>)?.simpleText as string) ?? (track.languageCode as string),
+    kind: track.kind as string | undefined,
   }));
 }
 
@@ -66,16 +66,18 @@ async function fetchCaptionXml(trackUrl: string): Promise<string> {
   return res.text();
 }
 
-const ENTITY_RE = /&(?:amp|lt|gt|quot|apos|#(\d+)|#39);/g;
+const ENTITY_RE = /&(?:amp|lt|gt|quot|apos|#(\d+)|#x([0-9a-fA-F]+)|#39);/g;
 const HTML_ENTITIES: Record<string, string> = {
   "&amp;": "&", "&lt;": "<", "&gt;": ">",
   "&quot;": '"', "&#39;": "'", "&apos;": "'",
 };
 
 function replaceEntities(text: string): string {
-  return text.replace(ENTITY_RE, (match, code) =>
-    code ? String.fromCharCode(Number(code)) : (HTML_ENTITIES[match] ?? match)
-  );
+  return text.replace(ENTITY_RE, (match, dec, hex) => {
+    if (dec) return String.fromCharCode(Number(dec));
+    if (hex) return String.fromCharCode(parseInt(hex, 16));
+    return HTML_ENTITIES[match] ?? match;
+  });
 }
 
 function decodeHtmlEntities(text: string): string {

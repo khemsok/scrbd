@@ -24,7 +24,7 @@ import {
 } from "../ai/state";
 import {
   buildTabBar, buildSettingsView, buildOnboardingView, buildStreamingView,
-  buildChatView, buildQuizView, buildQuizCards, buildMarkdownHTML,
+  buildChatView, buildQuizCards, buildMarkdownHTML,
   formatChatContent,
   type QuizQuestion,
 } from "../ai/views";
@@ -73,6 +73,7 @@ function extractApiKey(): Promise<string> {
     }, 5000);
 
     const handler = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== window) return;
       if (event.data?.type === "SCRBD_API_KEY") {
         clearTimeout(timeout);
         cleanup();
@@ -241,8 +242,19 @@ function getFilteredEntries(): TranscriptEntry[] {
   return entries.filter((e) => e.text.toLowerCase().includes(q));
 }
 
+const MAX_TRANSCRIPT_CHARS = 50_000;
+
 function getPlainTranscript(): string {
-  return entries.map((e) => `[${formatTimestamp(e.start)}] ${e.text}`).join("\n");
+  let result = "";
+  for (const e of entries) {
+    const line = `[${formatTimestamp(e.start)}] ${e.text}\n`;
+    if (result.length + line.length > MAX_TRANSCRIPT_CHARS) {
+      result += "\n[Transcript truncated due to length]";
+      break;
+    }
+    result += line;
+  }
+  return result.trimEnd();
 }
 
 function renderContent() {
@@ -307,7 +319,7 @@ function populateLanguages() {
   const langSelect = $("scrbd-lang") as HTMLSelectElement | null;
   if (!langSelect) return;
   langSelect.innerHTML = tracks
-    .map((t) => `<option value="${t.languageCode}"${t.languageCode === currentLang ? " selected" : ""}>${t.name}</option>`)
+    .map((t) => `<option value="${escapeHtml(t.languageCode)}"${t.languageCode === currentLang ? " selected" : ""}>${escapeHtml(t.name)}</option>`)
     .join("");
 }
 
@@ -684,7 +696,7 @@ function renderAiView(view: AiView) {
   if (view === "quiz") {
     const cached = getCached("quiz");
     if (cached) {
-      contentEl.innerHTML = buildQuizView();
+      contentEl.innerHTML = buildStreamingView();
       const stream = $("scrbd-ai-stream");
       if (stream) {
         try {
@@ -698,7 +710,7 @@ function renderAiView(view: AiView) {
 
       return;
     }
-    contentEl.innerHTML = buildQuizView();
+    contentEl.innerHTML = buildStreamingView();
     triggerQuizGeneration();
     return;
   }
@@ -724,7 +736,7 @@ function triggerStreamingGeneration(view: AiView) {
 
   const transcript = getPlainTranscript();
   const prompt = summaryPrompt(transcript);
-  const cacheKey = "summary";
+  const cacheKey = view as string;
 
   streamEl.innerHTML = `<span class="scrbd-cursor"></span>`;
   let textBuffer = "";
@@ -776,7 +788,16 @@ function triggerQuizGeneration() {
           const match = fullText.match(/```(?:json)?\s*([\s\S]*?)```/);
           if (match) jsonStr = match[1].trim();
 
-          const questions = JSON.parse(jsonStr) as QuizQuestion[];
+          const parsed = JSON.parse(jsonStr);
+          if (!Array.isArray(parsed) || !parsed.every((q: unknown) =>
+            typeof q === "object" && q !== null &&
+            "question" in q && "options" in q && "correct" in q && "explanation" in q &&
+            typeof (q as Record<string, unknown>).question === "string" &&
+            Array.isArray((q as Record<string, unknown>).options) &&
+            typeof (q as Record<string, unknown>).correct === "number" &&
+            typeof (q as Record<string, unknown>).explanation === "string"
+          )) throw new Error("Invalid quiz format");
+          const questions = parsed as QuizQuestion[];
           streamEl.innerHTML = buildQuizCards(questions);
           bindQuizEvents();
         } catch {
@@ -1250,6 +1271,7 @@ async function init() {
   searchQuery = "";
   currentLang = "";
   currentFormat = "plain";
+  settingsOpen = false;
   resetAiState();
 
   aiSettings = await loadSettings();

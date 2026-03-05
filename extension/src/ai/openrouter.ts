@@ -14,6 +14,8 @@ export function streamChat(
 
   (async () => {
     let fullText = "";
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    let streamDone = false;
     try {
       const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -32,7 +34,7 @@ export function streamChat(
         throw new Error(res.status === 401 ? "Invalid API key" : `OpenRouter error ${res.status}: ${body}`);
       }
 
-      const reader = res.body?.getReader();
+      reader = res.body?.getReader();
       if (!reader) throw new Error("No response stream");
 
       const decoder = new TextDecoder();
@@ -50,7 +52,7 @@ export function streamChat(
           const trimmed = line.trim();
           if (!trimmed.startsWith("data: ")) continue;
           const data = trimmed.slice(6);
-          if (data === "[DONE]") continue;
+          if (data === "[DONE]") { streamDone = true; continue; }
 
           try {
             const parsed = JSON.parse(data);
@@ -65,10 +67,15 @@ export function streamChat(
         }
       }
 
-      callbacks.onDone(fullText);
+      if (streamDone) callbacks.onDone(fullText);
     } catch (err: unknown) {
-      if ((err as Error).name === "AbortError") return;
+      if ((err as Error).name === "AbortError") {
+        reader?.cancel().catch(() => {});
+        return;
+      }
       callbacks.onError(err instanceof Error ? err : new Error(String(err)));
+    } finally {
+      reader?.cancel().catch(() => {});
     }
   })();
 

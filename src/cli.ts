@@ -114,6 +114,7 @@ async function main() {
       console.log(await processUrl(urls[0], options));
     } else {
       const results = await Promise.allSettled(urls.map((url) => processUrl(url, options)));
+      let hasFailure = false;
 
       for (let i = 0; i < urls.length; i++) {
         console.log(`--- ${urls[i]} ---`);
@@ -121,10 +122,13 @@ async function main() {
         if (result.status === "fulfilled") {
           console.log(result.value);
         } else {
+          hasFailure = true;
           console.error(`Error: ${result.reason instanceof Error ? result.reason.message : result.reason}`);
         }
         console.log();
       }
+
+      if (hasFailure) process.exit(1);
     }
   } catch (err: unknown) {
     console.error(`Error: ${err instanceof Error ? err.message : err}`);

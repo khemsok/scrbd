@@ -39,6 +39,7 @@ export function extractVideoId(input: string): string | null {
 async function fetchApiKey(videoId: string): Promise<string> {
   const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
     headers: { "User-Agent": USER_AGENT, "Accept-Language": "en-US,en;q=0.9" },
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!res.ok) {
@@ -66,6 +67,7 @@ async function fetchCaptionTracks(
       context: INNERTUBE_CONTEXT,
       videoId,
     }),
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!res.ok) {
@@ -87,16 +89,16 @@ async function fetchCaptionTracks(
     throw new Error("No caption tracks found. The video may not have subtitles.");
   }
 
-  return tracks.map((track: any) => ({
-    baseUrl: track.baseUrl.replace("&fmt=srv3", ""),
-    languageCode: track.languageCode,
-    name: track.name?.simpleText ?? track.languageCode,
-    kind: track.kind,
+  return tracks.map((track: Record<string, unknown>) => ({
+    baseUrl: (track.baseUrl as string).replace("&fmt=srv3", ""),
+    languageCode: track.languageCode as string,
+    name: ((track.name as Record<string, unknown>)?.simpleText as string) ?? (track.languageCode as string),
+    kind: track.kind as string | undefined,
   }));
 }
 
 async function fetchCaptionXml(trackUrl: string): Promise<string> {
-  const res = await fetch(trackUrl);
+  const res = await fetch(trackUrl, { signal: AbortSignal.timeout(30_000) });
 
   if (!res.ok) {
     throw new Error(`Failed to fetch captions: ${res.status}`);
@@ -105,16 +107,18 @@ async function fetchCaptionXml(trackUrl: string): Promise<string> {
   return res.text();
 }
 
-const ENTITY_RE = /&(?:amp|lt|gt|quot|apos|#(\d+)|#39);/g;
+const ENTITY_RE = /&(?:amp|lt|gt|quot|apos|#(\d+)|#x([0-9a-fA-F]+)|#39);/g;
 const HTML_ENTITIES: Record<string, string> = {
   "&amp;": "&", "&lt;": "<", "&gt;": ">",
   "&quot;": '"', "&#39;": "'", "&apos;": "'",
 };
 
 function replaceEntities(text: string): string {
-  return text.replace(ENTITY_RE, (match, code) =>
-    code ? String.fromCharCode(Number(code)) : (HTML_ENTITIES[match] ?? match)
-  );
+  return text.replace(ENTITY_RE, (match, dec, hex) => {
+    if (dec) return String.fromCharCode(Number(dec));
+    if (hex) return String.fromCharCode(parseInt(hex, 16));
+    return HTML_ENTITIES[match] ?? match;
+  });
 }
 
 function decodeHtmlEntities(text: string): string {

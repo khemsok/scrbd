@@ -1,5 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <path d="M78 30 L50 30 C38 30 30 40 30 50 C30 60 38 68 50 68 L78 68 C90 68 98 76 98 86 C98 96 90 104 78 104 L50 104"
-        stroke="#c4593a" stroke-width="8" fill="none" stroke-linecap="round"/>
-  <polygon points="58,80 58,96 70,88" fill="#c4593a"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#F4EDE4"/><text x="12.5" y="23" font-family="Georgia, Times New Roman, serif" font-weight="700" font-size="22" fill="#1A1714" text-anchor="middle" dominant-baseline="auto">s</text><circle cx="21.5" cy="20.5" r="2" fill="#C4593A"/></svg>

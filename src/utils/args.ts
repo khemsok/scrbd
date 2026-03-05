@@ -119,7 +119,9 @@ export function parseArgs(argv: string[]): CliOptions {
         options.to = argv[++i];
         break;
       default:
-        if (!arg.startsWith("-")) {
+        if (arg.startsWith("--")) {
+          console.error(`Warning: unknown flag "${arg}"`);
+        } else if (!arg.startsWith("-")) {
           positionals.push(arg);
         }
         break;

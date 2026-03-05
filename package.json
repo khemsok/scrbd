@@ -1,6 +1,6 @@
 {
   "name": "@khemsok/scrbd",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "type": "module",
   "description": "YouTube transcript extractor with AI-powered summaries, quizzes, and chat. Available as a CLI and Chrome extension.",
   "keywords": [
@@ -35,7 +35,7 @@
     "dev": "bun run src/cli.ts",
     "build": "bun build src/cli.ts --outdir dist --target node",
     "build:ext": "bun build extension/src/content/content.ts --outfile extension/dist/content.js --target browser && bun build extension/src/background/service-worker.ts --outfile extension/dist/service-worker.js --target browser && bun build extension/src/content/inject.ts --outfile extension/dist/inject.js --target browser",
-    "dev:ext": "bun run build:ext --watch",
+    "dev:ext": "bun build extension/src/content/content.ts --outfile extension/dist/content.js --target browser --watch & bun build extension/src/background/service-worker.ts --outfile extension/dist/service-worker.js --target browser --watch & bun build extension/src/content/inject.ts --outfile extension/dist/inject.js --target browser --watch",
     "prepublishOnly": "bun run build"
   },
   "engines": {

@@ -44,7 +44,7 @@ export function buildSettingsView(apiKey: string, model: string): string {
         <div class="scrbd-settings-row stacked">
           <div class="scrbd-settings-row-label">
             <span class="scrbd-settings-row-title">API Key</span>
-            <span class="scrbd-settings-row-hint">${keyHint || "Not configured"}</span>
+            <span class="scrbd-settings-row-hint">${keyHint ? escapeHtml(keyHint) : "Not configured"}</span>
           </div>
           <div class="scrbd-settings-row-control">
             <input type="password" class="scrbd-settings-input" id="scrbd-settings-key"
@@ -130,18 +130,6 @@ export function buildChatView(history: ChatMessage[]): string {
       <input type="text" class="scrbd-chat-input" id="scrbd-chat-input"
         placeholder="Ask about this video..." autocomplete="off" />
       <button class="scrbd-chat-send" id="scrbd-chat-send">→</button>
-    </div>
-  `;
-}
-
-export function buildQuizView(): string {
-  return `
-    <div class="scrbd-ai-content" id="scrbd-ai-stream">
-      <div class="scrbd-ai-loading">
-        <div class="scrbd-ai-loading-dot"></div>
-        <div class="scrbd-ai-loading-dot"></div>
-        <div class="scrbd-ai-loading-dot"></div>
-      </div>
     </div>
   `;
 }
@@ -284,5 +272,9 @@ function escapeHtml(str: string): string {
 }
 
 function escapeAttr(str: string): string {
-  return str.replace(/"/g, "&quot;").replace(/&/g, "&amp;");
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
